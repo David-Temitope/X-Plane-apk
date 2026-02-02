@@ -2,16 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:file_picker/file_picker.dart';
+
+// Import platform-specific implementations conditionally to avoid breaking Web/other platforms
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
-import 'package:file_picker/file_picker.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  if (!kIsWeb) {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
   runApp(const MyApp());
 }
 
@@ -49,93 +54,109 @@ class _WebPageState extends State<WebPage> {
   void initState() {
     super.initState();
 
-    late final PlatformWebViewControllerCreationParams params;
-    if (WebViewPlatform.instance is WebKitWebViewPlatform) {
-      params = WebKitWebViewControllerCreationParams(
-        allowsInlineMediaPlayback: true,
-        mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
-      );
-    } else {
-      params = const PlatformWebViewControllerCreationParams();
+    if (!kIsWeb) {
+      _initializeController();
     }
+  }
 
-    final WebViewController controller =
-        WebViewController.fromPlatformCreationParams(params);
+  void _initializeController() {
+    try {
+      late final PlatformWebViewControllerCreationParams params;
 
-    controller
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onProgress: (int progress) {
-            if (mounted) {
-              setState(() {
-                _progress = progress;
-              });
-            }
-          },
-          onPageStarted: (String url) {
-            if (mounted) {
-              setState(() {
-                _isLoading = true;
-                _error = null;
-              });
-            }
-          },
-          onPageFinished: (String url) {
-            if (mounted) {
-              setState(() {
-                _isLoading = false;
-              });
-            }
-          },
-          onWebResourceError: (WebResourceError error) {
-            if (mounted) {
-              setState(() {
-                _isLoading = false;
-                _error = error.description;
-              });
-            }
-          },
-          onNavigationRequest: (NavigationRequest request) {
-            final uri = Uri.parse(request.url);
-            if (uri.host != 'x-plane.lovable.app' &&
-                !request.url.startsWith('https://x-plane.lovable.app') &&
-                uri.scheme != 'about' &&
-                uri.scheme != 'data') {
-              _launchUrl(uri);
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.navigate;
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse('https://x-plane.lovable.app'));
+      if (!kIsWeb && WebViewPlatform.instance is WebKitWebViewPlatform) {
+        params = WebKitWebViewControllerCreationParams(
+          allowsInlineMediaPlayback: true,
+          mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+        );
+      } else {
+        params = const PlatformWebViewControllerCreationParams();
+      }
 
-    if (controller.platform is AndroidWebViewController) {
-      AndroidWebViewController.enableDebugging(true);
-      (controller.platform as AndroidWebViewController).setOnShowFileSelector(
-        (FileSelectorParams params) async {
-          try {
-            final result = await FilePicker.platform.pickFiles(
-              allowMultiple: params.mode == FileSelectorMode.openMultiple,
-              type: FileType.any,
-            );
-            if (result != null && result.files.isNotEmpty) {
-              return result.files
-                  .where((file) => file.path != null)
-                  .map((file) => Uri.file(file.path!).toString())
-                  .toList();
+      final WebViewController controller =
+          WebViewController.fromPlatformCreationParams(params);
+
+      controller
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(const Color(0x00000000))
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onProgress: (int progress) {
+              if (mounted) {
+                setState(() {
+                  _progress = progress;
+                });
+              }
+            },
+            onPageStarted: (String url) {
+              if (mounted) {
+                setState(() {
+                  _isLoading = true;
+                  _error = null;
+                });
+              }
+            },
+            onPageFinished: (String url) {
+              if (mounted) {
+                setState(() {
+                  _isLoading = false;
+                });
+              }
+            },
+            onWebResourceError: (WebResourceError error) {
+              if (mounted) {
+                setState(() {
+                  _isLoading = false;
+                  _error = error.description;
+                });
+              }
+            },
+            onNavigationRequest: (NavigationRequest request) {
+              final uri = Uri.parse(request.url);
+              if (uri.host != 'x-plane.lovable.app' &&
+                  !request.url.startsWith('https://x-plane.lovable.app') &&
+                  uri.scheme != 'about' &&
+                  uri.scheme != 'data') {
+                _launchUrl(uri);
+                return NavigationDecision.prevent;
+              }
+              return NavigationDecision.navigate;
+            },
+          ),
+        )
+        ..loadRequest(Uri.parse('https://x-plane.lovable.app'));
+
+      // Android specific configuration
+      if (controller.platform is AndroidWebViewController) {
+        AndroidWebViewController.enableDebugging(true);
+        (controller.platform as AndroidWebViewController).setOnShowFileSelector(
+          (FileSelectorParams params) async {
+            try {
+              final result = await FilePicker.platform.pickFiles(
+                allowMultiple: params.mode == FileSelectorMode.openMultiple,
+                type: FileType.any,
+              );
+              if (result != null && result.files.isNotEmpty) {
+                return result.files
+                    .where((file) => file.path != null)
+                    .map((file) => Uri.file(file.path!).toString())
+                    .toList();
+              }
+            } catch (e) {
+              debugPrint('Error picking files: $e');
             }
-          } catch (e) {
-            debugPrint('Error picking files: $e');
-          }
-          return <String>[];
-        },
-      );
+            return <String>[];
+          },
+        );
+      }
+
+      _controller = controller;
+    } catch (e) {
+      debugPrint('WebView initialization failed: $e');
+      setState(() {
+        _error = 'Failed to initialize WebView: $e';
+        _isLoading = false;
+      });
     }
-
-    _controller = controller;
   }
 
   Future<void> _launchUrl(Uri url) async {
@@ -146,6 +167,17 @@ class _WebPageState extends State<WebPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return const Scaffold(
+        body: Center(
+          child: Text(
+            'This app is optimized for Android and iOS.\nPlease access https://x-plane.lovable.app directly in your browser.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (bool didPop, dynamic result) async {
