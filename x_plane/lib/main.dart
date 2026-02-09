@@ -4,13 +4,18 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:convert';
 
 // Import platform-specific implementations conditionally to avoid breaking Web/other platforms
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
+  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+
   if (!kIsWeb) {
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
@@ -49,14 +54,40 @@ class _WebPageState extends State<WebPage> {
   int _progress = 0;
   bool _isLoading = true;
   String? _error;
+  bool _isFirstLoad = true;
+  final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
 
   @override
   void initState() {
     super.initState();
-
+    _initNotifications();
     if (!kIsWeb) {
       _initializeController();
+    } else {
+      // Remove splash on web immediately as WebView is not used
+      FlutterNativeSplash.remove();
     }
+  }
+
+  Future<void> _initNotifications() async {
+    if (kIsWeb) return;
+
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const DarwinInitializationSettings initializationSettingsIOS =
+        DarwinInitializationSettings();
+    const InitializationSettings initializationSettings = InitializationSettings(
+        android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
+    await _notificationsPlugin.initialize(initializationSettings);
+  }
+
+  void _showNotification(String title, String body) async {
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails('x_plane_channel', 'X Plane Notifications',
+            importance: Importance.max, priority: Priority.high);
+    const NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+    await _notificationsPlugin.show(0, title, body, platformChannelSpecifics);
   }
 
   void _initializeController() {
@@ -78,6 +109,17 @@ class _WebPageState extends State<WebPage> {
       controller
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(const Color(0x00000000))
+        ..addJavaScriptChannel(
+          'Notifications',
+          onMessageReceived: (JavaScriptMessage message) {
+            try {
+              final data = jsonDecode(message.message);
+              _showNotification(data['title'] ?? 'Notification', data['body'] ?? '');
+            } catch (e) {
+              _showNotification('Notification', message.message);
+            }
+          },
+        )
         ..setNavigationDelegate(
           NavigationDelegate(
             onProgress: (int progress) {
@@ -100,6 +142,10 @@ class _WebPageState extends State<WebPage> {
                 setState(() {
                   _isLoading = false;
                 });
+                if (_isFirstLoad) {
+                  _isFirstLoad = false;
+                  FlutterNativeSplash.remove();
+                }
               }
             },
             onWebResourceError: (WebResourceError error) {
@@ -108,6 +154,11 @@ class _WebPageState extends State<WebPage> {
                   _isLoading = false;
                   _error = error.description;
                 });
+                // Also remove splash on error so user isn't stuck
+                if (_isFirstLoad) {
+                  _isFirstLoad = false;
+                  FlutterNativeSplash.remove();
+                }
               }
             },
             onNavigationRequest: (NavigationRequest request) {
@@ -156,6 +207,10 @@ class _WebPageState extends State<WebPage> {
         _error = 'Failed to initialize WebView: $e';
         _isLoading = false;
       });
+      if (_isFirstLoad) {
+        _isFirstLoad = false;
+        FlutterNativeSplash.remove();
+      }
     }
   }
 

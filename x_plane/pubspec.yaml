@@ -40,10 +40,13 @@ dependencies:
   webview_flutter_android: ^4.10.11
   webview_flutter_wkwebview: ^3.23.5
   file_picker: ^10.3.10
+  flutter_local_notifications: ^17.1.2
+  flutter_native_splash: ^2.4.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -55,8 +58,25 @@ dev_dependencies:
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/logo_white.jpeg"
+  min_sdk_android: 21 # android min sdk value
+
+flutter_native_splash:
+  color: "#ffffff"
+  image: assets/logo_white.jpeg
+  android_12:
+    image: assets/logo_white.jpeg
+    color: "#ffffff"
+  fullscreen: true
+
 # The following section is specific to Flutter packages.
 flutter:
+  assets:
+    - assets/logo_white.jpeg
+    - assets/logo_black.jpeg
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
